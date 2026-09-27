@@ -1,10 +1,3 @@
-const express = require("express");
-
-const app = express();
-
-app.use(express.json({ limit: "50kb" }));
-
-// Temporary in-memory storage
 const messages = new Map();
 
 const emergencyNames = {
@@ -23,112 +16,214 @@ const locationNames = {
     2: "Relay Approximate"
 };
 
+function sendJson(res, statusCode, data) {
+    res.statusCode = statusCode;
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify(data));
+}
 
-// --------------------------------------------------
-// Health
-// --------------------------------------------------
+async function readBody(req) {
+    return new Promise((resolve, reject) => {
+        let body = "";
 
-app.get("/health", (req, res) => {
-    res.json({
-        system: "Emergency Relay",
-        status: "running",
-        cached_messages: messages.size
+        req.on("data", chunk => {
+            body += chunk;
+        });
+
+        req.on("end", () => {
+            try {
+                resolve(body ? JSON.parse(body) : {});
+            } catch (error) {
+                reject(error);
+            }
+        });
+
+        req.on("error", reject);
     });
-});
+}
 
+module.exports = async function handler(req, res) {
 
-// --------------------------------------------------
-// Receive emergency
-// --------------------------------------------------
-
-app.post("/messages", (req, res) => {
-
-    const message = req.body;
-
-    if (!message.message_id) {
-        return res.status(400).json({
-            status: "error",
-            message: "message_id is required"
-        });
-    }
-
-    // Duplicate protection
-    if (messages.has(message.message_id)) {
-        return res.json({
-            status: "duplicate",
-            message_id: message.message_id
-        });
-    }
-
-    const storedMessage = {
-        ...message,
-
-        emergency_name:
-            emergencyNames[message.emergency_code] ||
-            "Unknown",
-
-        location_name:
-            locationNames[message.location_source] ||
-            "Unknown",
-
-        received_at: Date.now()
-    };
-
-    messages.set(
-        message.message_id,
-        storedMessage
+    const url = new URL(
+        req.url,
+        `https://${req.headers.host}`
     );
 
-    console.log(
-        "Emergency received:",
-        message.message_id
-    );
+    /*
+     * Vercel exposes this function under /api.
+     *
+     * Depending on routing, req.url may contain:
+     *
+     * /api/health
+     * /api/messages
+     *
+     * or:
+     *
+     * /health
+     * /messages
+     */
 
-    return res.status(200).json({
-        status: "received",
-        message_id: message.message_id
-    });
-});
+    let pathname = url.pathname;
 
+    pathname = pathname.replace(/^\/api/, "");
 
-// --------------------------------------------------
-// Get all emergencies
-// --------------------------------------------------
-
-app.get("/messages", (req, res) => {
-
-    const allMessages =
-        Array.from(messages.values()).reverse();
-
-    res.json({
-        count: allMessages.length,
-        messages: allMessages
-    });
-});
+    if (pathname === "") {
+        pathname = "/";
+    }
 
 
-// --------------------------------------------------
-// Get individual emergency
-// --------------------------------------------------
+    // --------------------------------------------------
+    // Health
+    // --------------------------------------------------
 
-app.get("/messages/:messageId", (req, res) => {
+    if (
+        req.method === "GET" &&
+        pathname === "/health"
+    ) {
 
-    const message =
-        messages.get(req.params.messageId);
-
-    if (!message) {
-        return res.status(404).json({
-            status: "error",
-            message: "Message not found"
+        return sendJson(res, 200, {
+            system: "Emergency Relay",
+            status: "running",
+            cached_messages: messages.size
         });
     }
 
-    res.json(message);
-});
+
+    // --------------------------------------------------
+    // Get all messages
+    // --------------------------------------------------
+
+    if (
+        req.method === "GET" &&
+        pathname === "/messages"
+    ) {
+
+        const allMessages =
+            Array.from(messages.values()).reverse();
+
+        return sendJson(res, 200, {
+            count: allMessages.length,
+            messages: allMessages
+        });
+    }
 
 
-// --------------------------------------------------
-// Vercel serverless export
-// --------------------------------------------------
+    // --------------------------------------------------
+    // Receive emergency
+    // --------------------------------------------------
 
-module.exports = app;
+    if (
+        req.method === "POST" &&
+        pathname === "/messages"
+    ) {
+
+        try {
+
+            const message = await readBody(req);
+
+            if (!message.message_id) {
+
+                return sendJson(res, 400, {
+                    status: "error",
+                    message: "message_id is required"
+                });
+            }
+
+
+            // Duplicate protection
+            if (messages.has(message.message_id)) {
+
+                return sendJson(res, 200, {
+                    status: "duplicate",
+                    message_id: message.message_id
+                });
+            }
+
+
+            const storedMessage = {
+                ...message,
+
+                emergency_name:
+                    emergencyNames[
+                    message.emergency_code
+                    ] || "Unknown",
+
+                location_name:
+                    locationNames[
+                    message.location_source
+                    ] || "Unknown",
+
+                received_at:
+                    Date.now()
+            };
+
+
+            messages.set(
+                message.message_id,
+                storedMessage
+            );
+
+
+            console.log(
+                "Emergency received:",
+                message.message_id
+            );
+
+
+            return sendJson(res, 200, {
+                status: "received",
+                message_id: message.message_id
+            });
+
+        } catch (error) {
+
+            return sendJson(res, 400, {
+                status: "error",
+                message: "Invalid JSON request"
+            });
+        }
+    }
+
+
+    // --------------------------------------------------
+    // Individual message
+    // --------------------------------------------------
+
+    if (
+        req.method === "GET" &&
+        pathname.startsWith("/messages/")
+    ) {
+
+        const messageId =
+            pathname.substring("/messages/".length);
+
+        const message =
+            messages.get(messageId);
+
+        if (!message) {
+
+            return sendJson(res, 404, {
+                status: "error",
+                message: "Message not found"
+            });
+        }
+
+        return sendJson(
+            res,
+            200,
+            message
+        );
+    }
+
+
+    // --------------------------------------------------
+    // Unknown route
+    // --------------------------------------------------
+
+    return sendJson(res, 404, {
+        status: "error",
+        message: "Route not found",
+        method: req.method,
+        path: pathname
+    });
+};
