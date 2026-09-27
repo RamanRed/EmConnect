@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>Emergency Relay</title>
+
+    <style>
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background: #f5f7fa;
+            color: #1f2937;
+        }
+
+        header {
+            background: #111827;
+            color: white;
+            padding: 24px 30px;
+        }
+
+        header h1 {
+            margin: 0;
+            font-size: 26px;
+        }
+
+        header p {
+            margin: 6px 0 0;
+            color: #cbd5e1;
+            font-size: 14px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 30px auto;
+            padding: 0 20px;
+        }
+
+        .top {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .count {
+            font-size: 18px;
+            font-weight: bold;
+        }
+
+        .status {
+            font-size: 14px;
+            color: #16a34a;
+        }
+
+        .empty {
+            background: white;
+            border-radius: 12px;
+            padding: 60px 20px;
+            text-align: center;
+            color: #6b7280;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+        }
+
+        .messages {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .message {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+            border-left: 5px solid #dc2626;
+        }
+
+        .message-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .emergency-type {
+            font-size: 19px;
+            font-weight: bold;
+        }
+
+        .severity {
+            padding: 6px 10px;
+            border-radius: 6px;
+            background: #fee2e2;
+            color: #991b1b;
+            font-weight: bold;
+            font-size: 13px;
+        }
+
+        .details {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 15px;
+        }
+
+        .detail {
+            background: #f9fafb;
+            padding: 10px;
+            border-radius: 7px;
+        }
+
+        .label {
+            display: block;
+            color: #6b7280;
+            font-size: 11px;
+            margin-bottom: 5px;
+        }
+
+        .value {
+            font-size: 13px;
+            font-weight: 500;
+            word-break: break-word;
+        }
+
+        .message-id {
+            margin-top: 15px;
+            font-family: monospace;
+            font-size: 11px;
+            color: #6b7280;
+            word-break: break-all;
+        }
+
+        @media (max-width: 700px) {
+
+            .details {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            .message-header {
+                align-items: flex-start;
+                gap: 10px;
+            }
+        }
+
+    </style>
+
+</head>
+
+<body>
+
+<header>
+
+    <h1>Emergency Relay</h1>
+
+    <p>
+        Emergency Service Provider Dashboard
+    </p>
+
+</header>
+
+
+<div class="container">
+
+    <div class="top">
+
+        <div class="count">
+            Emergencies: <span id="count">0</span>
+        </div>
+
+        <div class="status">
+            ● Backend Connected
+        </div>
+
+    </div>
+
+
+    <div id="empty" class="empty">
+
+        No emergency messages received yet.
+
+    </div>
+
+
+    <div id="messages" class="messages"></div>
+
+</div>
+
+
+<script>
+
+    const emergencyNames = {
+        1: "Medical Emergency",
+        2: "Fire Emergency",
+        3: "Police Emergency",
+        4: "Accident",
+        5: "Trapped",
+        6: "Missing Person",
+        7: "General SOS"
+    };
+
+
+    const locationNames = {
+        0: "Unknown",
+        1: "Origin",
+        2: "Relay Approximate"
+    };
+
+
+    function emergencyName(code) {
+
+        return emergencyNames[code] || "Unknown Emergency";
+
+    }
+
+
+    function locationName(code) {
+
+        return locationNames[code] || "Unknown";
+
+    }
+
+
+    function formatTime(timestamp) {
+
+        if (!timestamp) {
+            return "-";
+        }
+
+        return new Date(timestamp).toLocaleString();
+
+    }
+
+
+    function createMessageCard(message) {
+
+        const card = document.createElement("div");
+
+        card.className = "message";
+
+
+        const originLocation =
+            message.origin_lat !== null &&
+            message.origin_lat !== undefined &&
+            message.origin_lon !== null &&
+            message.origin_lon !== undefined
+
+            ? `${message.origin_lat}, ${message.origin_lon}`
+
+            : "Not available";
+
+
+        const fallbackLocation =
+            message.fallback_lat !== null &&
+            message.fallback_lat !== undefined &&
+            message.fallback_lon !== null &&
+            message.fallback_lon !== undefined
+
+            ? `${message.fallback_lat}, ${message.fallback_lon}`
+
+            : "Not available";
+
+
+        card.innerHTML = `
+
+            <div class="message-header">
+
+                <div class="emergency-type">
+                    ${emergencyName(message.emergency_code)}
+                </div>
+
+                <div class="severity">
+                    Severity ${message.severity}
+                </div>
+
+            </div>
+
+
+            <div class="details">
+
+                <div class="detail">
+
+                    <span class="label">
+                        Source
+                    </span>
+
+                    <span class="value">
+                        ${message.source_id || "-"}
+                    </span>
+
+                </div>
+
+
+                <div class="detail">
+
+                    <span class="label">
+                        Time
+                    </span>
+
+                    <span class="value">
+                        ${formatTime(message.timestamp)}
+                    </span>
+
+                </div>
+
+
+                <div class="detail">
+
+                    <span class="label">
+                        Hop Count
+                    </span>
+
+                    <span class="value">
+                        ${message.hop_count ?? "-"}
+                    </span>
+
+                </div>
+
+
+                <div class="detail">
+
+                    <span class="label">
+                        TTL
+                    </span>
+
+                    <span class="value">
+                        ${message.ttl ?? "-"}
+                    </span>
+
+                </div>
+
+
+                <div class="detail">
+
+                    <span class="label">
+                        Location Source
+                    </span>
+
+                    <span class="value">
+                        ${locationName(message.location_source)}
+                    </span>
+
+                </div>
+
+
+                <div class="detail">
+
+                    <span class="label">
+                        Origin Location
+                    </span>
+
+                    <span class="value">
+                        ${originLocation}
+                    </span>
+
+                </div>
+
+
+                <div class="detail">
+
+                    <span class="label">
+                        Fallback Location
+                    </span>
+
+                    <span class="value">
+                        ${fallbackLocation}
+                    </span>
+
+                </div>
+
+
+                <div class="detail">
+
+                    <span class="label">
+                        Received
+                    </span>
+
+                    <span class="value">
+                        ${formatTime(message.received_at)}
+                    </span>
+
+                </div>
+
+            </div>
+
+
+            <div class="message-id">
+
+                Message ID:
+                ${message.message_id}
+
+            </div>
+
+        `;
+
+
+        return card;
+
+    }
+
+
+    async function loadMessages() {
+
+        try {
+
+            const response = await fetch("/messages");
+
+            if (!response.ok) {
+                throw new Error("Failed to fetch messages");
+            }
+
+            const data = await response.json();
+
+            const container =
+                document.getElementById("messages");
+
+            const empty =
+                document.getElementById("empty");
+
+            const count =
+                document.getElementById("count");
+
+
+            container.innerHTML = "";
+
+            count.textContent = data.count;
+
+
+            if (data.count === 0) {
+
+                empty.style.display = "block";
+
+                return;
+
+            }
+
+
+            empty.style.display = "none";
+
+
+            data.messages.forEach(message => {
+
+                const card =
+                    createMessageCard(message);
+
+                container.appendChild(card);
+
+            });
+
+        }
+
+        catch (error) {
+
+            console.error(
+                "Could not load emergencies:",
+                error
+            );
+
+        }
+
+    }
+
+
+    // Load immediately
+    loadMessages();
+
+
+    // Check for new emergencies every 2 seconds
+    setInterval(
+        loadMessages,
+        2000
+    );
+
+</script>
+
+
+</body>
+
+</html>
