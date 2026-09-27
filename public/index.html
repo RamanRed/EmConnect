@@ -151,6 +151,7 @@
                 align-items: flex-start;
                 gap: 10px;
             }
+
         }
 
     </style>
@@ -169,7 +170,6 @@
 
 </header>
 
-
 <div class="container">
 
     <div class="top">
@@ -184,18 +184,15 @@
 
     </div>
 
-
     <div id="empty" class="empty">
 
         No emergency messages received yet.
 
     </div>
 
-
     <div id="messages" class="messages"></div>
 
 </div>
-
 
 <script>
 
@@ -413,10 +410,13 @@
 
         try {
 
-            const response = await fetch("/messages");
+            // Vercel API endpoint
+            const response = await fetch("/api/messages");
 
             if (!response.ok) {
-                throw new Error("Failed to fetch messages");
+                throw new Error(
+                    `API returned HTTP ${response.status}`
+                );
             }
 
             const data = await response.json();
@@ -482,7 +482,6 @@
     );
 
 </script>
-
 
 </body>
 
