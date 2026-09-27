@@ -1,20 +1,48 @@
 const express = require("express");
-const path = require("path");
 
 const app = express();
-const PORT = process.env.PORT || 3000;
-
-// Temporary in-memory storage.
-// Messages disappear when the server restarts.
-const messages = new Map();
 
 app.use(express.json({ limit: "50kb" }));
 
-// Serve the dashboard
-app.use(express.static(path.join(__dirname, "public")));
+// Temporary in-memory storage
+const messages = new Map();
 
-// Receive emergency message
+const emergencyNames = {
+    1: "Medical",
+    2: "Fire",
+    3: "Police",
+    4: "Accident",
+    5: "Trapped",
+    6: "Missing Person",
+    7: "General SOS"
+};
+
+const locationNames = {
+    0: "Unknown",
+    1: "Origin",
+    2: "Relay Approximate"
+};
+
+
+// --------------------------------------------------
+// Health
+// --------------------------------------------------
+
+app.get("/health", (req, res) => {
+    res.json({
+        system: "Emergency Relay",
+        status: "running",
+        cached_messages: messages.size
+    });
+});
+
+
+// --------------------------------------------------
+// Receive emergency
+// --------------------------------------------------
+
 app.post("/messages", (req, res) => {
+
     const message = req.body;
 
     if (!message.message_id) {
@@ -34,12 +62,27 @@ app.post("/messages", (req, res) => {
 
     const storedMessage = {
         ...message,
+
+        emergency_name:
+            emergencyNames[message.emergency_code] ||
+            "Unknown",
+
+        location_name:
+            locationNames[message.location_source] ||
+            "Unknown",
+
         received_at: Date.now()
     };
 
-    messages.set(message.message_id, storedMessage);
+    messages.set(
+        message.message_id,
+        storedMessage
+    );
 
-    console.log("Emergency received:", message.message_id);
+    console.log(
+        "Emergency received:",
+        message.message_id
+    );
 
     return res.status(200).json({
         status: "received",
@@ -47,9 +90,15 @@ app.post("/messages", (req, res) => {
     });
 });
 
-// Return all emergencies
+
+// --------------------------------------------------
+// Get all emergencies
+// --------------------------------------------------
+
 app.get("/messages", (req, res) => {
-    const allMessages = Array.from(messages.values()).reverse();
+
+    const allMessages =
+        Array.from(messages.values()).reverse();
 
     res.json({
         count: allMessages.length,
@@ -57,9 +106,15 @@ app.get("/messages", (req, res) => {
     });
 });
 
-// Return one emergency
+
+// --------------------------------------------------
+// Get individual emergency
+// --------------------------------------------------
+
 app.get("/messages/:messageId", (req, res) => {
-    const message = messages.get(req.params.messageId);
+
+    const message =
+        messages.get(req.params.messageId);
 
     if (!message) {
         return res.status(404).json({
@@ -71,15 +126,9 @@ app.get("/messages/:messageId", (req, res) => {
     res.json(message);
 });
 
-// Health check
-app.get("/health", (req, res) => {
-    res.json({
-        system: "Emergency Relay",
-        status: "running",
-        cached_messages: messages.size
-    });
-});
 
-app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Emergency Relay running on port ${PORT}`);
-});
+// --------------------------------------------------
+// Vercel serverless export
+// --------------------------------------------------
+
+module.exports = app;
